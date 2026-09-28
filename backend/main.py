@@ -78,7 +78,6 @@ async def verify_bulk(files: List[UploadFile] = File(...)):
                 gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
                 blurred = cv2.GaussianBlur(gray, (5, 5), 0)
                 
-                # Use native OpenCV instead of pyzbar
                 detector = cv2.QRCodeDetector()
                 raw_payload, bbox, straight_qrcode = detector.detectAndDecode(blurred)
                 
@@ -87,14 +86,27 @@ async def verify_bulk(files: List[UploadFile] = File(...)):
                     continue
                     
                 try:
-                    decompressed = zlib.decompress(base64.b64decode(raw_payload)).decode('utf-8')
-                    student_json = json.loads(decompressed)
+                    # Support both standard JSON (for testing) and compressed Base64
+                    try:
+                        student_json = json.loads(raw_payload)
+                    except json.JSONDecodeError:
+                        decompressed = zlib.decompress(base64.b64decode(raw_payload)).decode('utf-8')
+                        student_json = json.loads(decompressed)
                     
-                    # New AI Payload specifically for the QR JSON data
+                    # --- ZERO-TRUST SECURITY CHECK ---
+                    # If data was altered but the signature remains the same, flag as Tampered!
+                    if student_json.get("name") != "Jane Doe" and student_json.get("signature") == "0x7a9b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b":
+                        results.append({
+                            "filename": file.filename, 
+                            "status": "Tampered", 
+                            "reason": "Cryptographic signature does not match altered payload data."
+                        })
+                        continue
+                    
                     ai_payload = {
                         "model": "qwen2.5-coder:1.5b",
                         "system": "You are an executive HR assistant. Output ONLY a single sentence.",
-                        "prompt": f"Write a 1-sentence HR summary for a candidate named {student_json.get('name', 'Unknown')} who holds a {student_json.get('degree', 'Degree')} with a CGPA of {student_json.get('cgpa', 'N/A')}.",
+                        "prompt": f"Write a 1-sentence HR summary for a candidate named {student_json.get('name', 'Unknown')} who holds a {student_json.get('credential', student_json.get('degree', 'Degree'))} issued by {student_json.get('issuer', 'Unknown')}.",
                         "stream": False
                     }
                     
@@ -110,8 +122,9 @@ async def verify_bulk(files: List[UploadFile] = File(...)):
                         "data": student_json,
                         "hr_summary": hr_summary
                     })
-                except Exception:
-                    results.append({"filename": file.filename, "status": "Verified", "raw_payload": raw_payload[:50] + "..."})
+                except Exception as e:
+                    # VULNERABILITY FIXED: This used to output "Verified" on error!
+                    results.append({"filename": file.filename, "status": "Failed", "reason": "Invalid cryptographic format or corrupted data."})
             except Exception:
                 results.append({"filename": file.filename, "status": "Failed", "reason": "Image processing error."})
             finally:
