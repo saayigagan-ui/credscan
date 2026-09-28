@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CredScan | Zero-Trust Infrastructure</title>
+    <style>
+        :root {
+            --neon-green: #39ff14;
+            --dark-bg: #0a0a0a;
+            --panel-bg: #111;
+            --text-light: #fff;
+            --text-muted: #888;
+        }
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f4f5; 
+            color: #333;
+            transition: background-color 0.8s ease, color 0.8s ease;
+        }
+        body.engine-mode {
+            background-color: var(--dark-bg);
+            color: var(--text-light);
+            font-family: monospace, sans-serif;
+        }
+
+        /* Views */
+        .view { display: none; padding: 40px; max-width: 1000px; margin: 0 auto; }
+        .view.active { display: block; animation: fadeIn 0.5s; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        /* Homepage Styles */
+        .hero { text-align: center; padding: 100px 20px; }
+        .hero h1 { font-size: 3em; margin-bottom: 10px; }
+        .hero p { font-size: 1.2em; color: #555; max-width: 600px; margin: 0 auto 30px; }
+        .btn-launch {
+            background: #000; color: #fff; border: none; padding: 15px 30px; 
+            font-size: 1.2em; border-radius: 5px; cursor: pointer; transition: 0.2s;
+        }
+        .btn-launch:hover { background: #333; }
+
+        /* Engine Room Styles */
+        .nav-bar { display: flex; justify-content: space-between; margin-bottom: 30px; border-bottom: 1px solid #333; padding-bottom: 15px; }
+        .nav-btn { background: transparent; color: var(--text-muted); border: 1px solid #333; padding: 8px 15px; cursor: pointer; border-radius: 4px; }
+        .nav-btn:hover { color: var(--neon-green); border-color: var(--neon-green); }
+
+        /* Scanner & Laser */
+        .scanner-container { position: relative; overflow: hidden; }
+        .laser {
+            position: absolute; top: 0; left: 0; width: 100%; height: 2px;
+            background: #39ff14; box-shadow: 0 0 15px #39ff14, 0 0 5px #39ff14;
+            animation: scan 1.5s infinite linear; display: none; z-index: 10;
+        }
+        @keyframes scan { 
+            0% { top: -10%; opacity: 0; } 
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { top: 110%; opacity: 0; } 
+        }
+
+        #dropzone {
+            border: 2px dashed #444; background: var(--panel-bg); padding: 60px 20px; 
+            text-align: center; border-radius: 8px; cursor: pointer; transition: all 0.3s ease;
+        }
+        
+        /* Dashboard */
+        .dashboard-grid { display: grid; gap: 15px; }
+        .record-card {
+            background: #1a1a1a; border-left: 4px solid var(--text-muted); 
+            padding: 15px; border-radius: 4px; word-break: break-all;
+        }
+        .record-card.success { border-left-color: var(--neon-green); }
+        .record-card.error { border-left-color: #ff3333; }
+        .record-meta { font-size: 0.85em; color: var(--text-muted); margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+    <!-- 1. Light Theme Homepage -->
+    <div id="view-home" class="view active">
+        <div class="hero">
+            <h1>Credchain Vault</h1>
+            <p>Securely store and manage your verified academic credentials and digital assets.</p>
+            <button class="btn-launch" onclick="launchEngine()">Verify New Document</button>
+        </div>
+    </div>
+
+    <!-- 2. Dark Theme Engine Room -->
+    <div id="view-engine" class="view">
+        <div class="nav-bar">
+            <span style="font-size: 1.2em; font-weight: bold; color: #39ff14;">CredScan Validation Engine</span>
+            <div>
+                <button class="nav-btn" onclick="showDashboard()">View Stored Results</button>
+                <button class="nav-btn" onclick="exitEngine()">← Exit to Vault</button>
+            </div>
+        </div>
+
+        <div id="dropzone" class="scanner-container">
+            <div class="laser" id="laser-line"></div>
+            <h2 style="margin-top: 0;">Secure Bulk Upload</h2>
+            <p style="color: #888;">Drag & drop PDFs or JPEGs for cryptographic and QR extraction</p>
+            <input type="file" id="file-input" multiple accept=".pdf, .jpg, .jpeg, .png" style="display: none;">
+            
+            <button id="btn-camera" class="nav-btn" style="margin-top: 15px; position: relative; z-index: 20;">
+                📷 Scan Physical QR via WebCam
+            </button>
+            <video id="webcam-video" autoplay playsinline style="display:none; width: 100%; max-width: 400px; margin: 15px auto; border: 1px solid #444; border-radius: 8px; position: relative; z-index: 20;"></video>
+            <canvas id="webcam-canvas" style="display:none;"></canvas>
+        </div>
+        
+        <div id="live-results" style="margin-top: 30px;"></div>
+    </div>
+
+    <!-- 3. Stored Results Vault -->
+    <div id="view-dashboard" class="view">
+        <div class="nav-bar">
+            <span style="font-size: 1.2em; font-weight: bold; color: #39ff14;">Credchain Validation Vault</span>
+            <button class="nav-btn" onclick="launchEngine()">← Back to Scanner</button>
+        </div>
+        <div class="dashboard-grid" id="vault-grid"></div>
+    </div>
+
+    <script>
+        // -- Navigation & Theme Logic --
+        function switchView(viewId) {
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+            document.getElementById(viewId).classList.add('active');
+        }
+
+        function launchEngine() {
+            document.body.classList.add('engine-mode');
+            switchView('view-engine');
+        }
+
+        function exitEngine() {
+            document.body.classList.remove('engine-mode');
+            switchView('view-home');
+        }
+
+        function showDashboard() {
+            renderVault();
+            switchView('view-dashboard');
+        }
+
+        // -- Element Selectors --
+        const dropzone = document.getElementById('dropzone');
+        const fileInput = document.getElementById('file-input');
+        const liveResults = document.getElementById('live-results');
+        const laserLine = document.getElementById('laser-line');
+        const btnCamera = document.getElementById('btn-camera');
+        const video = document.getElementById('webcam-video');
+        const canvas = document.getElementById('webcam-canvas');
+        let cameraStream = null;
+
+        // -- Drag & Drop Logic --
+        dropzone.addEventListener('click', (e) => {
+            if (e.target.id !== 'btn-camera' && e.target.id !== 'webcam-video') fileInput.click();
+        });
+        
+        dropzone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropzone.style.boxShadow = "0 0 20px rgba(57, 255, 20, 0.2)";
+            dropzone.style.borderColor = "#39ff14";
+        });
+        
+        dropzone.addEventListener('dragleave', () => {
+            dropzone.style.boxShadow = "none";
+            dropzone.style.borderColor = "#444";
+        });
+        
+        dropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropzone.style.boxShadow = "none";
+            dropzone.style.borderColor = "#444";
+            processFiles(e.dataTransfer.files);
+        });
+        
+        fileInput.addEventListener('change', (e) => processFiles(e.target.files));
+
+        // -- WebCam Integration --
+        btnCamera.addEventListener('click', async (e) => {
+            e.stopPropagation(); 
+            
+            if (!cameraStream) {
+                try {
+                    cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+                    video.srcObject = cameraStream;
+                    video.style.display = "block";
+                    btnCamera.innerText = "📸 Capture Frame & Verify";
+                    btnCamera.style.borderColor = "#39ff14";
+                    btnCamera.style.color = "#39ff14";
+                } catch (err) {
+                    alert("Camera access denied or hardware unavailable.");
+                }
+            } else {
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                canvas.getContext('2d').drawImage(video, 0, 0);
+                
+                canvas.toBlob((blob) => {
+                    const webcamFile = new File([blob], `WebCam_Scan_${Date.now()}.jpg`, { type: "image/jpeg" });
+                    processFiles([webcamFile]); 
+                    
+                    cameraStream.getTracks().forEach(track => track.stop());
+                    cameraStream = null;
+                    video.style.display = "none";
+                    btnCamera.innerText = "📷 Scan Physical QR via WebCam";
+                    btnCamera.style.borderColor = "#333";
+                    btnCamera.style.color = "#888";
+                }, "image/jpeg", 0.95);
+            }
+        });
+
+        // -- Unified Verification Pipeline --
+        async function processFiles(files) {
+            if (files.length === 0) return;
+            
+            if (laserLine) laserLine.style.display = "block";
+            liveResults.innerHTML = `<p style="text-align: center; color: #888;">Executing cryptographic and visual pipelines...</p>`;
+            
+            const formData = new FormData();
+            for (let file of files) formData.append("files", file);
+
+            try {
+                const res = await fetch("https://upright-configure-shudder.ngrok-free.app/api/verify-bulk", { method: "POST", body: formData });
+                if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+                const data = await res.json();
+                
+                liveResults.innerHTML = "<h3>Live Scan Results:</h3>";
+                data.batch_results.forEach(result => {
+                    saveToVault(result);
+                    renderLiveCard(result);
+                });
+            } catch (err) {
+                console.error("Backend Error:", err);
+                liveResults.innerHTML = `<div class="record-card error"><h3 style="color:#ff3333; margin:0 0 5px 0;">❌ Connection Error</h3><p style="margin:0; color:#ccc;">Ensure FastAPI backend is running.</p></div>`;
+            } finally {
+                if (laserLine) laserLine.style.display = "none";
+            }
+        }
+
+        // -- Storage & Rendering --
+        function saveToVault(result) {
+            const vault = JSON.parse(localStorage.getItem('credchain_vault')) || [];
+            result.timestamp = new Date().toLocaleString();
+            vault.unshift(result); 
+            localStorage.setItem('credchain_vault', JSON.stringify(vault));
+        }
+
+        function renderLiveCard(result) {
+            const card = document.createElement('div');
+            card.className = `record-card ${result.status === "Verified" ? "success" : "error"}`;
+            card.style.marginBottom = "10px";
+            card.innerHTML = buildCardHTML(result);
+            liveResults.appendChild(card);
+        }
+
+        function renderVault() {
+            const vaultGrid = document.getElementById('vault-grid');
+            const vault = JSON.parse(localStorage.getItem('credchain_vault')) || [];
+            
+            if (vault.length === 0) {
+                vaultGrid.innerHTML = "<p style='color:#888;'>No records stored in vault.</p>";
+                return;
+            }
+
+            vaultGrid.innerHTML = "";
+            vault.forEach(result => {
+                const card = document.createElement('div');
+                card.className = `record-card ${result.status === "Verified" ? "success" : "error"}`;
+                card.innerHTML = buildCardHTML(result) + `<div class="record-meta">Stored on: ${result.timestamp}</div>`;
+                vaultGrid.appendChild(card);
+            });
+        }
+
+        // -- Corrected Result HTML Builder --
+        function buildCardHTML(result) {
+            if (result.status === "Verified") {
+                if (result.hash) {
+                    // 1. Digital PDF UI
+                    return `<h4 style="color:#39ff14; margin:0 0 5px 0;">✅ PKI VERIFIED: ${result.filename}</h4>
+                            <p style="font-size: 0.8em; color: #aaa; margin: 0 0 10px 0;">${result.hash}</p>
+                            <div style="background: #000; padding: 10px; border-radius: 4px;"><strong>AI Summary:</strong> ${result.hr_summary || 'Validation passed.'}</div>`;
+                } else {
+                    // 2. Physical QR UI
+                    const payloadStr = result.data ? JSON.stringify(result.data, null, 2) : result.raw_payload;
+                    return `<h4 style="color:#39ff14; margin:0 0 5px 0;">✅ QR EXTRACTED: ${result.filename}</h4>
+                            <div style="background: #000; padding: 10px; border-radius: 4px; margin-bottom: 10px;">
+                                <strong>AI Summary:</strong> ${result.hr_summary || "Mathematical validation passed."}
+                            </div>
+                            <pre style="background: #111; padding: 10px; border-radius: 4px; font-size: 0.85em; overflow-x: auto; margin: 0; color: #888;">${payloadStr}</pre>`;
+                }
+            } else {
+                // 3. Red Team Tampered/Error UI
+                return `<h4 style="color:#ff3333; margin:0 0 5px 0;">❌ ${result.status.toUpperCase()}: ${result.filename}</h4>
+                        <p style="margin: 0; color: #ccc;">${result.reason}</p>`;
+            }
+        }
+    </script>
+</body>
+</html>
