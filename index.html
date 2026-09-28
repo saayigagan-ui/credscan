@@ -223,7 +223,13 @@
             for (let file of files) formData.append("files", file);
 
             try {
-                const res = await fetch("https://upright-configure-shudder.ngrok-free.app/api/verify-bulk", { method: "POST", body: formData });
+                const res = await fetch("https://upright-configure-shudder.ngrok-free.dev/api/verify-bulk", {
+    method: "POST",
+    headers: {
+        "ngrok-skip-browser-warning": "true"
+    },
+    body: formData
+});
                 if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
                 const data = await res.json();
                 
